@@ -2,15 +2,13 @@
 
 using System.CommandLine;
 using System.Text;
-using System.Text.Json;
-using System.Text.RegularExpressions;
-using MongoDB.Bson;
 using MongoDB.Driver;
 
 partial class Program {
 
 	private static readonly string ConnectionString = "mongodb://localhost:27017";
-	private static readonly string TestCollectionName = "test_users";
+	private static readonly string TestDatabaseName = "test";
+	private static readonly string UsersCollectionName = "users";
 
     static async Task<int> Main(string[] args) {
 		EncodingProvider provider = CodePagesEncodingProvider.Instance;
@@ -40,43 +38,30 @@ partial class Program {
 
     private static void TestCRUD() {
 		MongoClient client = new(ConnectionString);
-		IMongoDatabase db = client.GetDatabase("replicaset");
-
-		Console.WriteLine($"Suppression de tous les Utilisateurs");
-		db.DropCollection(TestCollectionName);
-		IMongoCollection<UserData> collection = db.GetCollection<UserData>(TestCollectionName);
-
-		UserData user1 = GenerateUser();
-		UserData user2 = GenerateUser();
-		UserData user3 = GenerateUser();
-
-		Console.WriteLine($"Insertion d'Utilisateurs : {user1}\n");
-		collection.InsertOne(user1);
-
-		Console.WriteLine($"Insertion d'Utilisateurs : {user2}\n");
-		collection.InsertOne(user2);
-
-		Console.WriteLine($"Insertion d'Utilisateurs : {user3}\n");
-		collection.InsertOne(user3);
+		IMongoDatabase db = client.GetDatabase(TestDatabaseName);
+		IMongoCollection<UserData> collection = db.GetCollection<UserData>(UsersCollectionName);
 
 
-		Console.WriteLine($"Suppression de l'Utilisateur {user1.Name}");
-        DeleteResult deleteResult = collection.DeleteOne(Builders<UserData>.Filter.Eq(user => user.Id, user1.Id));
-		Console.WriteLine(deleteResult.IsAcknowledged + "\n");
+		UserData user = GenerateUser();
+		Console.WriteLine($"Insertion d'Utilisateurs : {user}\n");
+		collection.InsertOne(user);
 
 
-		Console.WriteLine($"Modification de l'Utilisateur {user2.Name} (Ajout de 5 ans d'âge)");
+		Console.WriteLine($"Récupération des Utilisateurs de plus de 30 ans");
+		Console.WriteLine(string.Join("\n", collection.Find(Builders<UserData>.Filter.Gt(user => user.Age, 30)).ToList()) + "\n");
+
+
+		Console.WriteLine($"Modification des Utilisateurs (Ajout de 5 ans d'âge)");
 		UpdateResult updateRes = collection.UpdateOne(
-			Builders<UserData>.Filter.Eq(user => user.Id, user2.Id),
-			Builders<UserData>.Update.Set(user => user.Age, user2.Age + 5)
+			Builders<UserData>.Filter.Empty,
+			Builders<UserData>.Update.Inc(user => user.Age, 5)
 		);
 		Console.WriteLine(updateRes.IsAcknowledged + "\n");
 
-		Console.WriteLine($"Récupération de l'Utilisateur {user2.Name}");
-		Console.WriteLine(collection.Find(Builders<UserData>.Filter.Eq(user => user.Id, user2.Id)).First() + "\n");
 
-		Console.WriteLine($"Récupération de tous les Utilisateurs");
-		Console.WriteLine(string.Join("\n", collection.Find(Builders<UserData>.Filter.Empty).ToList()));
+		Console.WriteLine($"Suppression de l'Utilisateur {user.Name}");
+        DeleteResult deleteResult = collection.DeleteOne(Builders<UserData>.Filter.Eq(user => user.Id, user.Id));
+		Console.WriteLine(deleteResult.IsAcknowledged + "\n");
     }
 
     private static void GenerateData(string fileName, int dataCount) {
@@ -85,10 +70,12 @@ partial class Program {
 			data.Add(GenerateUser());
 		}
 
-		string serialized = JsonSerializer.Serialize(data.ToArray());
+		MongoClient client = new(ConnectionString);
+		IMongoDatabase db = client.GetDatabase(TestDatabaseName);
+		IMongoCollection<UserData> collection = db.GetCollection<UserData>(UsersCollectionName);
 
-		using FileStream? sw = File.Create(fileName);
-		sw.Write( Encoding.UTF8.GetBytes(serialized) );
+		Console.WriteLine($"Ajout de tous les utilisateurs à la Base Mongo");
+		collection.InsertMany(data);
     }
 
 	private static UserData GenerateUser() {
