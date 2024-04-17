@@ -4,8 +4,12 @@ using System.CommandLine;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using MongoDB.Bson;
+using MongoDB.Driver;
 
 partial class Program {
+
+	private static readonly string ConnectionString = "mongodb://localhost:27017";
 
     static async Task<int> Main(string[] args) {
 		EncodingProvider provider = CodePagesEncodingProvider.Instance;
@@ -21,34 +25,61 @@ partial class Program {
 			fileName,
 			dataCount
 		};
-		Command migrateCommand = new("migrate");
+		Command crudCommand = new("test");
 
 		rootCommand.Add(generateDataCommand);
-		rootCommand.Add(migrateCommand);
+		rootCommand.Add(crudCommand);
 
 
         generateDataCommand.SetHandler(GenerateData, fileName, dataCount);
-        migrateCommand.SetHandler(Migrate);
+        crudCommand.SetHandler(TestCRUD);
 
         return await rootCommand.InvokeAsync(args);
     }
 
-    private static void Migrate() {
-		Console.WriteLine("Migrate");
+    private static void TestCRUD() {
+		MongoClient client = new(ConnectionString);
+		IMongoDatabase db = client.GetDatabase("replicaset");
+
+		Console.WriteLine($"Suppression de tous les Utilisateurs");
+		db.DropCollection("users");
+		IMongoCollection<UserData> collection = db.GetCollection<UserData>("users");
+
+		UserData user1 = GenerateUser();
+		UserData user2 = GenerateUser();
+		UserData user3 = GenerateUser();
+
+		Console.WriteLine($"Insertion d'Utilisateurs : {user1}\n");
+		collection.InsertOne(user1);
+		Console.WriteLine($"Insertion d'Utilisateurs : {user2}\n");
+		collection.InsertOne(user2);
+		Console.WriteLine($"Insertion d'Utilisateurs : {user3}\n");
+		collection.InsertOne(user3);
+
+
+		Console.WriteLine($"Suppression de l'Utilisateur {user1.Name}");
+        DeleteResult deleteResult = collection.DeleteOne(Builders<UserData>.Filter.Eq(user => user.Id, user1.Id));
+		Console.WriteLine(deleteResult.IsAcknowledged + "\n");
+
+
+		Console.WriteLine($"Modification de l'Utilisateur {user2.Name} (Ajout de 5 ans d'âge)");
+		UpdateResult updateRes = collection.UpdateOne(
+			Builders<UserData>.Filter.Eq(user => user.Id, user2.Id),
+			Builders<UserData>.Update.Set(user => user.Age, user2.Age + 5)
+		);
+		Console.WriteLine(updateRes.IsAcknowledged + "\n");
+
+		Console.WriteLine($"Récupération de l'Utilisateur {user2.Name}");
+		Console.WriteLine(collection.Find(Builders<UserData>.Filter.Eq(user => user.Id, user2.Id)).First() + "\n");
+
+		Console.WriteLine($"Récupération de tous les Utilisateurs");
+		Console.WriteLine(string.Join("\n", collection.Find(Builders<UserData>.Filter.Empty).ToList()));
     }
 
     private static void GenerateData(string fileName, int dataCount) {
-		List<Data> data = [];
+		List<UserData> data = [];
 		for (int i = 0; i < dataCount; i++) {
-
-			DateTime birthDate = Faker.Date.Birthday();
-
-			data.Add(new() {
-				Name = Faker.Name.FullName(),
-				Age = (byte)GetAge(birthDate),
-				CreatedAt = Faker.Date.Between(birthDate, DateTime.Today),
-				Email = Faker.Internet.Email()
-			});
+			data.Add(GenerateUser());
 		}
 
 		string serialized = JsonSerializer.Serialize(data.ToArray());
@@ -57,7 +88,16 @@ partial class Program {
 		sw.Write( Encoding.UTF8.GetBytes(serialized) );
     }
 
+	private static UserData GenerateUser() {
+		DateTime birthDate = Faker.Date.Birthday();
 
+		return new() {
+			Name = Faker.Name.FullName(),
+			Age = (byte)GetAge(birthDate),
+			CreatedAt = Faker.Date.Between(birthDate, DateTime.Today),
+			Email = Faker.Internet.Email()
+		};
+	}
 	private static int GetAge(DateTime birthDate) {
 		DateTime today = DateTime.Today;
 
