@@ -10,6 +10,7 @@ using MongoDB.Driver;
 partial class Program {
 
 	private static readonly string ConnectionString = "mongodb://localhost:27017";
+	private static readonly string TestCollectionName = "test_users";
 
     static async Task<int> Main(string[] args) {
 		EncodingProvider provider = CodePagesEncodingProvider.Instance;
@@ -42,8 +43,8 @@ partial class Program {
 		IMongoDatabase db = client.GetDatabase("replicaset");
 
 		Console.WriteLine($"Suppression de tous les Utilisateurs");
-		db.DropCollection("users");
-		IMongoCollection<UserData> collection = db.GetCollection<UserData>("users");
+		db.DropCollection(TestCollectionName);
+		IMongoCollection<UserData> collection = db.GetCollection<UserData>(TestCollectionName);
 
 		UserData user1 = GenerateUser();
 		UserData user2 = GenerateUser();
@@ -51,8 +52,10 @@ partial class Program {
 
 		Console.WriteLine($"Insertion d'Utilisateurs : {user1}\n");
 		collection.InsertOne(user1);
+
 		Console.WriteLine($"Insertion d'Utilisateurs : {user2}\n");
 		collection.InsertOne(user2);
+
 		Console.WriteLine($"Insertion d'Utilisateurs : {user3}\n");
 		collection.InsertOne(user3);
 
